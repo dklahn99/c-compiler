@@ -1,22 +1,126 @@
-use std::string;
-use std::vec;
+/*
+ * TODOs:
+ *   - floating point literals
+ *   - Comments
+ */
+
+const KEYWORDS: [&'static str; 4] = ["int", "return", "if", "else"];
+const OPERATORS: [&'static str; 4] = ["+", "-", "=", "=="];
 
 #[derive(Debug, PartialEq)]
-pub enum Token {
+pub enum Token<'a> {
     OpenParen,
     CloseParen,
     OpenBrace,
     CloseBrace,
     Semicolon,
-    Operator(String),      // e.g. =, ==, +
-    Keyword(String),       // e.g. int, if, return
-    Identifier(String),    // e.g. myvar or main
-    IntegerLiteral(u64),   // e.g. 0, 1, 500
-    StringLiteral(String), // e.g. "text"
+    Operator(&'a str),      // e.g. =, ==, +
+    Keyword(&'a str),       // e.g. int, if, return
+    Identifier(&'a str),    // e.g. myvar or main
+    IntegerLiteral(u64),    // e.g. 0, 1, 500
+    StringLiteral(&'a str), // e.g. "text"
+}
+
+fn tokenize_operator(s: &str) -> Option<(Token, usize)> {
+    if s.len() == 0 {
+        return None;
+    }
+
+    let mut ptr = 0;
+    while ptr < s.len() {
+        // Increment the pointer until the next increment causes the buffer to no
+        // longer match any operators.
+        let buf = &s[..ptr + 1];
+        if !OPERATORS
+            .iter()
+            .map(|op| buf.len() <= op.len() && buf == &op[..ptr + 1])
+            .any(|x| x)
+        {
+            break;
+        }
+        ptr += 1;
+    }
+
+    let matched = &s[..ptr];
+    if OPERATORS.contains(&matched) {
+        return Some((Token::Operator(matched), matched.len()));
+    }
+
+    None
+}
+
+fn tokenize_string_literal(s: &str) -> Option<(Token, usize)> {
+    if s.len() == 0 {
+        return None;
+    }
+
+    let quote = '"';
+    if s.chars().nth(0).unwrap() != quote {
+        return None;
+    }
+
+    let next_quote_index = s[1..]
+        .find(quote)
+        .expect("Tokenization Error: String Literal: missing matching quote.");
+
+    Some((
+        Token::StringLiteral(&s[1..next_quote_index + 1]),
+        next_quote_index + 2, // Add two extra consumed characters for the quotes
+    ))
+}
+
+fn tokenize_keywords_integers_ids(s: &str) -> Option<(Token, usize)> {
+    let mut substr = s;
+    for (i, c) in s.chars().enumerate() {
+        if !(c.is_alphanumeric() || c == '_') {
+            substr = &s[..i];
+            break;
+        }
+    }
+
+    if substr.len() == 0 {
+        return None;
+    }
+
+    if KEYWORDS.contains(&substr) {
+        return Some((Token::Keyword(substr), substr.len()));
+    }
+
+    let as_int = substr.parse::<u64>();
+    if as_int.is_ok() {
+        return Some((Token::IntegerLiteral(as_int.unwrap()), substr.len()));
+    }
+
+    Some((Token::Identifier(substr), substr.len()))
 }
 
 pub fn tokenize(s: &str) -> Vec<Token> {
-    return vec![Token::Semicolon];
+    let mut ptr = 0;
+    let mut tokens: Vec<Token> = Vec::new();
+    while ptr < s.len() {
+        let c = s.chars().nth(ptr).expect("OOB Error");
+        if c.is_whitespace() {
+            ptr += 1;
+            continue;
+        }
+
+        let (next_token, num_chars) = match c {
+            '(' => (Token::OpenParen, 1),
+            ')' => (Token::CloseParen, 1),
+            '{' => (Token::OpenBrace, 1),
+            '}' => (Token::CloseBrace, 1),
+            ';' => (Token::Semicolon, 1),
+            _ => tokenize_operator(&s[ptr..])
+                .or_else(|| tokenize_string_literal(&s[ptr..]))
+                .or_else(|| tokenize_keywords_integers_ids(&s[ptr..]))
+                .expect("Tokenization Error"),
+        };
+
+        tokens.push(next_token);
+        ptr += num_chars;
+    }
+
+    tokens
 }
 
 mod tests {
@@ -34,6 +138,48 @@ mod tests {
         ];
         let result = tokenize(input);
         assert_eq!(result, expected);
-        return Ok(());
+        Ok(())
+    }
+
+    #[test]
+    fn test_operators() -> Result<(), String> {
+        let input = "+-===";
+        let expected: Vec<Token> = vec![
+            Token::Operator("+"),
+            Token::Operator("-"),
+            Token::Operator("=="),
+            Token::Operator("="),
+        ];
+        let result = tokenize(input);
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_keywords_and_identifiers() -> Result<(), String> {
+        let identifier = "my_identifier123";
+        let input = KEYWORDS.join(" ") + " " + identifier;
+
+        let mut expected: Vec<Token> = KEYWORDS
+            .iter()
+            .map(|k| Token::Keyword(k))
+            .collect::<Vec<_>>();
+        expected.append(&mut vec![Token::Identifier(identifier)]);
+
+        let result = tokenize(&input);
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_literals() -> Result<(), String> {
+        let input = "100 \"My_String\"";
+        let expected: Vec<Token> = vec![
+            Token::IntegerLiteral(100),
+            Token::StringLiteral("My_String"),
+        ];
+        let result = tokenize(input);
+        assert_eq!(result, expected);
+        Ok(())
     }
 }
