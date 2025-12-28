@@ -22,9 +22,7 @@ pub enum Token<'a> {
 }
 
 fn tokenize_operator(s: &str) -> Option<(Token, usize)> {
-    if s.len() == 0 {
-        return None;
-    }
+    assert!(s.len() != 0);
 
     let mut ptr = 0;
     while ptr < s.len() {
@@ -50,9 +48,7 @@ fn tokenize_operator(s: &str) -> Option<(Token, usize)> {
 }
 
 fn tokenize_string_literal(s: &str) -> Option<(Token, usize)> {
-    if s.len() == 0 {
-        return None;
-    }
+    assert!(s.len() != 0);
 
     let quote = '"';
     if s.chars().nth(0).unwrap() != quote {
@@ -70,6 +66,8 @@ fn tokenize_string_literal(s: &str) -> Option<(Token, usize)> {
 }
 
 fn tokenize_keywords_integers_ids(s: &str) -> Option<(Token, usize)> {
+    assert!(s.len() != 0);
+
     let mut substr = s;
     for (i, c) in s.chars().enumerate() {
         if !(c.is_alphanumeric() || c == '_') {
