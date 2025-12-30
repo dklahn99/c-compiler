@@ -1,8 +1,8 @@
 /*
- * TODOs:
- *   - floating point literals
- *   - Comments
- */
+* TODOs:
+*   - floating point literals
+*   - Comments
+*/
 
 const KEYWORDS: [&'static str; 4] = ["int", "return", "if", "else"];
 const OPERATORS: [&'static str; 4] = ["+", "-", "=", "=="];
@@ -92,11 +92,13 @@ fn tokenize_keywords_integers_ids(s: &str) -> Option<(Token, usize)> {
     Some((Token::Identifier(substr), substr.len()))
 }
 
-pub fn tokenize(s: &str) -> Vec<Token> {
+pub fn tokenize(s: &str) -> Result<Vec<Token>, String> {
     let mut ptr = 0;
     let mut tokens: Vec<Token> = Vec::new();
     while ptr < s.len() {
-        let c = s.chars().nth(ptr).expect("OOB Error");
+        // TODO: nth() is O(n). If we assume the input file is ASCII
+        // we can use byte indexing which is faster
+        let c = s.chars().nth(ptr).ok_or("Out of Bounds Error")?;
         if c.is_whitespace() {
             ptr += 1;
             continue;
@@ -111,14 +113,17 @@ pub fn tokenize(s: &str) -> Vec<Token> {
             _ => tokenize_operator(&s[ptr..])
                 .or_else(|| tokenize_string_literal(&s[ptr..]))
                 .or_else(|| tokenize_keywords_integers_ids(&s[ptr..]))
-                .expect("Tokenization Error"),
+                .ok_or(format!(
+                    "Tokenization error at position {} character {}",
+                    ptr, c
+                ))?,
         };
 
         tokens.push(next_token);
         ptr += num_chars;
     }
 
-    tokens
+    Ok(tokens)
 }
 
 mod tests {
@@ -134,7 +139,7 @@ mod tests {
             Token::CloseBrace,
             Token::Semicolon,
         ];
-        let result = tokenize(input);
+        let result = tokenize(input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -148,7 +153,7 @@ mod tests {
             Token::Operator("=="),
             Token::Operator("="),
         ];
-        let result = tokenize(input);
+        let result = tokenize(input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -164,7 +169,7 @@ mod tests {
             .collect::<Vec<_>>();
         expected.append(&mut vec![Token::Identifier(identifier)]);
 
-        let result = tokenize(&input);
+        let result = tokenize(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -176,7 +181,7 @@ mod tests {
             Token::IntegerLiteral(100),
             Token::StringLiteral("My_String"),
         ];
-        let result = tokenize(input);
+        let result = tokenize(input)?;
         assert_eq!(result, expected);
         Ok(())
     }
