@@ -21,7 +21,7 @@ pub enum Token<'a> {
     StringLiteral(&'a str), // e.g. "text"
 }
 
-fn tokenize_operator(s: &str) -> Option<(Token, usize)> {
+fn tokenize_operator(s: &str) -> Result<(Token, usize), ()> {
     assert!(s.len() != 0);
 
     let mut ptr = 0;
@@ -41,31 +41,31 @@ fn tokenize_operator(s: &str) -> Option<(Token, usize)> {
 
     let matched = &s[..ptr];
     if OPERATORS.contains(&matched) {
-        return Some((Token::Operator(matched), matched.len()));
+        return Ok((Token::Operator(matched), matched.len()));
     }
 
-    None
+    Err(())
 }
 
-fn tokenize_string_literal(s: &str) -> Option<(Token, usize)> {
+fn tokenize_string_literal(s: &str) -> Result<(Token, usize), ()> {
     assert!(s.len() != 0);
 
     let quote = '"';
     if s.chars().nth(0).unwrap() != quote {
-        return None;
+        return Err(());
     }
 
     let next_quote_index = s[1..]
         .find(quote)
         .expect("Tokenization Error: String Literal: missing matching quote.");
 
-    Some((
+    Ok((
         Token::StringLiteral(&s[1..next_quote_index + 1]),
         next_quote_index + 2, // Add two extra consumed characters for the quotes
     ))
 }
 
-fn tokenize_keywords_integers_ids(s: &str) -> Option<(Token, usize)> {
+fn tokenize_keywords_integers_ids(s: &str) -> Result<(Token, usize), ()> {
     assert!(s.len() != 0);
 
     let mut substr = s;
@@ -77,19 +77,19 @@ fn tokenize_keywords_integers_ids(s: &str) -> Option<(Token, usize)> {
     }
 
     if substr.len() == 0 {
-        return None;
+        return Err(());
     }
 
     if KEYWORDS.contains(&substr) {
-        return Some((Token::Keyword(substr), substr.len()));
+        return Ok((Token::Keyword(substr), substr.len()));
     }
 
     let as_int = substr.parse::<u64>();
     if as_int.is_ok() {
-        return Some((Token::IntegerLiteral(as_int.unwrap()), substr.len()));
+        return Ok((Token::IntegerLiteral(as_int.unwrap()), substr.len()));
     }
 
-    Some((Token::Identifier(substr), substr.len()))
+    Ok((Token::Identifier(substr), substr.len()))
 }
 
 pub fn tokenize(s: &str) -> Result<Vec<Token>, String> {
@@ -111,12 +111,12 @@ pub fn tokenize(s: &str) -> Result<Vec<Token>, String> {
             '}' => (Token::CloseBrace, 1),
             ';' => (Token::Semicolon, 1),
             _ => tokenize_operator(&s[ptr..])
-                .or_else(|| tokenize_string_literal(&s[ptr..]))
-                .or_else(|| tokenize_keywords_integers_ids(&s[ptr..]))
-                .ok_or(format!(
+                .or_else(|()| tokenize_string_literal(&s[ptr..]))
+                .or_else(|()| tokenize_keywords_integers_ids(&s[ptr..]))
+                .or(Err(format!(
                     "Tokenization error at position {} character {}",
                     ptr, c
-                ))?,
+                )))?,
         };
 
         tokens.push(next_token);
