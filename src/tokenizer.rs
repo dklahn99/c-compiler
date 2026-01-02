@@ -4,21 +4,22 @@
 *   - Comments
 */
 
-const KEYWORDS: [&'static str; 4] = ["int", "return", "if", "else"];
+const KEYWORDS: [&'static str; 6] = ["void", "int", "char", "return", "if", "else"];
 const OPERATORS: [&'static str; 4] = ["+", "-", "=", "=="];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {
     OpenParen,
     CloseParen,
     OpenBrace,
     CloseBrace,
     Semicolon,
-    Operator(&'a str),      // e.g. =, ==, +
-    Keyword(&'a str),       // e.g. int, if, return
-    Identifier(&'a str),    // e.g. myvar or main
-    IntegerLiteral(u64),    // e.g. 0, 1, 500
+    Operator(&'a str),   // e.g. =, ==, +
+    Keyword(&'a str),    // e.g. int, if, return
+    Identifier(&'a str), // e.g. myvar or main
+    IntegerLiteral(u64), // e.g. 0, 1, 500
     StringLiteral(&'a str), // e.g. "text"
+                         // TODO: CharLiteral, e.g. '\n'
 }
 
 fn tokenize_operator(s: &str) -> Result<(Token, usize), ()> {
