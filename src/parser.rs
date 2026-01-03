@@ -88,21 +88,37 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_brace_block(&mut self) -> Result<Vec<Statement>, String> {
+        self.expect(&Token::OpenBrace)?;
+
+        let mut brace_block: Vec<Statement> = vec![];
+        while self.peek() != Some(&Token::CloseBrace) {
+            brace_block.push(self.parse_statement()?);
+            println!("Parsed statement: {:?}", brace_block.last());
+        }
+        self.expect(&Token::CloseBrace)?;
+
+        Ok(brace_block)
+    }
+
     fn parse_expression(&mut self) -> Result<Expr, String> {
-        println!("Parse Expression: Parsing: {:?}", self.peek());
+        // println!("Parse Expression: Parsing: {:?}", self.peek());
         match self.advance() {
             Some(Token::IntegerLiteral(i)) => Ok(Expr::IntLiteral(*i)),
             Some(Token::StringLiteral(s)) => Ok(Expr::StringLiteral(s.to_string())),
             Some(Token::Identifier(name)) => Ok(Expr::Variable(name.to_string())),
-            _ => Err(format!("Error parsing expression: {:?}", self.tokens)),
+            _ => Err(format!(
+                "Error parsing token {:?} at position {:?}",
+                self.tokens[self.pos], self.pos
+            )),
         }
     }
 
     fn parse_variable_declaration(&mut self) -> Result<Statement, String> {
-        println!(
-            "Parsing variable declaration: {:?}",
-            self.tokens[self.pos..].to_vec()
-        );
+        // println!(
+        //     "Parsing variable declaration: {:?}",
+        //     self.tokens[self.pos..].to_vec()
+        // );
 
         let var_type = match self.advance() {
             Some(Token::Keyword("void")) => Type::Void,
@@ -148,8 +164,31 @@ impl<'a> Parser<'a> {
         })
     }
 
+    fn parse_if_else(&mut self) -> Result<Statement, String> {
+        self.expect(&Token::Keyword("if"))?;
+        self.expect(&Token::OpenParen)?;
+        let condition = self.parse_expression()?;
+        self.expect(&Token::CloseParen)?;
+
+        let if_body = self.parse_brace_block()?;
+
+        let else_body = match self.peek() {
+            Some(&Token::Keyword("else")) => {
+                self.expect(&Token::Keyword("else"))?;
+                Some(self.parse_brace_block()?)
+            }
+            _ => None,
+        };
+
+        Ok(Statement::If {
+            condition,
+            true_block: if_body,
+            false_block: else_body,
+        })
+    }
+
     fn parse_statement(&mut self) -> Result<Statement, String> {
-        println!("Parse Statement: Parsing: {:?}", self.peek());
+        // println!("Parse Statement: Parsing: {:?}", self.peek());
         match self.peek() {
             Some(Token::Keyword("return")) => {
                 self.advance();
@@ -157,7 +196,7 @@ impl<'a> Parser<'a> {
                 self.expect(&Token::Semicolon)?;
                 Ok(Statement::Return(expression))
             }
-            // Token::Keyword("if") => null,
+            Some(Token::Keyword("if")) => self.parse_if_else(),
             Some(Token::Keyword("int"))
             | Some(Token::Keyword("char"))
             | Some(Token::Identifier(_)) => self.parse_variable_declaration(),
@@ -172,20 +211,15 @@ impl<'a> Parser<'a> {
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Declaration>, String> {
     // For now assume we're only parsing main functions
-    let expected_prefix = tokenize("int main() {")?;
+    let expected_prefix = tokenize("int main()")?;
     assert_eq!(tokens[..expected_prefix.len()], expected_prefix);
     assert_eq!(*tokens.last().unwrap(), Token::CloseBrace);
 
-    let function_body_tokens = tokens[expected_prefix.len()..].split_last().unwrap().1;
+    let function_body_tokens = tokens[expected_prefix.len()..].to_vec();
     println!("function body tokens: {:?}", function_body_tokens);
-    let mut parser = Parser::new(function_body_tokens);
+    let mut parser = Parser::new(&function_body_tokens);
 
-    let mut function_body: Vec<Statement> = vec![];
-    while parser.len() != 0 {
-        let statement = parser.parse_statement()?;
-        println!("Parsed statement: {:?}", statement);
-        function_body.push(statement);
-    }
+    let function_body = parser.parse_brace_block()?;
 
     Ok(vec![Declaration::Function {
         name: "main".to_string(),
@@ -241,6 +275,59 @@ mod tests {
                     name: "z".to_string(),
                     var_type: Type::UserDefined("MyType".to_string()),
                     value: Some(Expr::StringLiteral(z_value)),
+                },
+            ],
+        }];
+        let result = parse(input)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_if() -> Result<(), String> {
+        let tokenize_input = "int main() { int x = 1; if(x) { return 0; } return 1;}";
+        let input: Vec<_> = tokenize(tokenize_input)?;
+        let expected: Vec<Declaration> = vec![Declaration::Function {
+            name: "main".to_string(),
+            args: vec![],
+            return_type: Type::Int,
+            statements: vec![
+                Statement::VarDeclare {
+                    name: "x".to_string(),
+                    var_type: Type::Int,
+                    value: Some(Expr::IntLiteral(1)),
+                },
+                Statement::If {
+                    condition: Expr::Variable("x".to_string()),
+                    true_block: vec![Statement::Return(Expr::IntLiteral(0))],
+                    false_block: None,
+                },
+                Statement::Return(Expr::IntLiteral(1)),
+            ],
+        }];
+        let result = parse(input)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_if_else() -> Result<(), String> {
+        let tokenize_input = "int main() { int x = 1; if(x){ return 1; }else{ return 0; }}";
+        let input: Vec<_> = tokenize(tokenize_input)?;
+        let expected: Vec<Declaration> = vec![Declaration::Function {
+            name: "main".to_string(),
+            args: vec![],
+            return_type: Type::Int,
+            statements: vec![
+                Statement::VarDeclare {
+                    name: "x".to_string(),
+                    var_type: Type::Int,
+                    value: Some(Expr::IntLiteral(1)),
+                },
+                Statement::If {
+                    condition: Expr::Variable("x".to_string()),
+                    true_block: vec![Statement::Return(Expr::IntLiteral(1))],
+                    false_block: Some(vec![Statement::Return(Expr::IntLiteral(0))]),
                 },
             ],
         }];
