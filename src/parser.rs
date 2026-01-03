@@ -2,8 +2,10 @@ use crate::tokenizer::{Token, tokenize};
 
 #[derive(PartialEq, Debug)]
 enum BinOp {
-    Plus,
-    Minus,
+    Add,
+    Sub,
+    Mul,
+    Div,
     Assign,
     Equals,
 }
@@ -14,6 +16,7 @@ enum Expr {
     StringLiteral(String),
     // TODO: CharLiteral,
     Variable(String),
+    Parenthesis(Box<Expr>),
     BinaryOperation {
         op: BinOp,
         left: Box<Expr>,
@@ -101,25 +104,54 @@ impl<'a> Parser<'a> {
         Ok(brace_block)
     }
 
-    fn parse_expression(&mut self) -> Result<Expr, String> {
-        // println!("Parse Expression: Parsing: {:?}", self.peek());
-        match self.advance() {
-            Some(Token::IntegerLiteral(i)) => Ok(Expr::IntLiteral(*i)),
-            Some(Token::StringLiteral(s)) => Ok(Expr::StringLiteral(s.to_string())),
-            Some(Token::Identifier(name)) => Ok(Expr::Variable(name.to_string())),
+    fn parse_parenthesis(&mut self) -> Result<Expr, String> {
+        self.expect(&Token::OpenParen)?;
+        let inner = self.parse_expression()?;
+        self.expect(&Token::CloseParen)?;
+        Ok(inner)
+    }
+
+    fn parse_primary_expression(&mut self) -> Result<Expr, String> {
+        match self.peek() {
+            Some(Token::IntegerLiteral(i)) => {
+                let int_literal = *i;
+                self.advance();
+                Ok(Expr::IntLiteral(int_literal))
+            }
+            Some(Token::StringLiteral(s)) => {
+                let str_literal = s.to_string();
+                self.advance();
+                Ok(Expr::StringLiteral(str_literal))
+            }
+            Some(Token::Identifier(name)) => {
+                let var_name = name.to_string();
+                self.advance();
+                Ok(Expr::Variable(var_name))
+            }
+            Some(Token::OpenParen) => self.parse_parenthesis(),
             _ => Err(format!(
                 "Error parsing token {:?} at position {:?}",
-                self.tokens[self.pos], self.pos
+                self.tokens.get(self.pos),
+                self.pos
             )),
         }
     }
 
-    fn parse_variable_declaration(&mut self) -> Result<Statement, String> {
-        // println!(
-        //     "Parsing variable declaration: {:?}",
-        //     self.tokens[self.pos..].to_vec()
-        // );
+    fn parse_expression(&mut self) -> Result<Expr, String> {
+        let left = self.parse_primary_expression()?;
 
+        /*
+         x + y * z --> Add(x, Mul(y, z))
+         x * y + z --> Add(Mul(x, y), z)
+
+
+
+        */
+
+        Ok(left)
+    }
+
+    fn parse_variable_declaration(&mut self) -> Result<Statement, String> {
         let var_type = match self.advance() {
             Some(Token::Keyword("void")) => Type::Void,
             Some(Token::Keyword("int")) => Type::Int,
@@ -170,9 +202,9 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
         self.expect(&Token::CloseParen)?;
 
-        let if_body = self.parse_brace_block()?;
+        let true_block = self.parse_brace_block()?;
 
-        let else_body = match self.peek() {
+        let false_block = match self.peek() {
             Some(&Token::Keyword("else")) => {
                 self.expect(&Token::Keyword("else"))?;
                 Some(self.parse_brace_block()?)
@@ -182,13 +214,12 @@ impl<'a> Parser<'a> {
 
         Ok(Statement::If {
             condition,
-            true_block: if_body,
-            false_block: else_body,
+            true_block,
+            false_block,
         })
     }
 
     fn parse_statement(&mut self) -> Result<Statement, String> {
-        // println!("Parse Statement: Parsing: {:?}", self.peek());
         match self.peek() {
             Some(Token::Keyword("return")) => {
                 self.advance();
@@ -203,6 +234,7 @@ impl<'a> Parser<'a> {
             None => Err("End of input.".to_string()),
             _ => {
                 let expression = self.parse_expression()?;
+                self.expect(&Token::Semicolon)?;
                 Ok(Statement::Expression(expression))
             }
         }
@@ -285,18 +317,13 @@ mod tests {
 
     #[test]
     fn test_if() -> Result<(), String> {
-        let tokenize_input = "int main() { int x = 1; if(x) { return 0; } return 1;}";
+        let tokenize_input = "int main() { if(x) { return 0; } return 1;}";
         let input: Vec<_> = tokenize(tokenize_input)?;
         let expected: Vec<Declaration> = vec![Declaration::Function {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
             statements: vec![
-                Statement::VarDeclare {
-                    name: "x".to_string(),
-                    var_type: Type::Int,
-                    value: Some(Expr::IntLiteral(1)),
-                },
                 Statement::If {
                     condition: Expr::Variable("x".to_string()),
                     true_block: vec![Statement::Return(Expr::IntLiteral(0))],
@@ -312,24 +339,105 @@ mod tests {
 
     #[test]
     fn test_if_else() -> Result<(), String> {
-        let tokenize_input = "int main() { int x = 1; if(x){ return 1; }else{ return 0; }}";
+        let tokenize_input = "int main() { if(x){ return 1; }else{ return 0; }}";
+        let input: Vec<_> = tokenize(tokenize_input)?;
+        let expected: Vec<Declaration> = vec![Declaration::Function {
+            name: "main".to_string(),
+            args: vec![],
+            return_type: Type::Int,
+            statements: vec![Statement::If {
+                condition: Expr::Variable("x".to_string()),
+                true_block: vec![Statement::Return(Expr::IntLiteral(1))],
+                false_block: Some(vec![Statement::Return(Expr::IntLiteral(0))]),
+            }],
+        }];
+        let result = parse(input)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_assign() -> Result<(), String> {
+        let tokenize_input = "int main() { x = 1; }";
+        let input: Vec<_> = tokenize(tokenize_input)?;
+        let expected: Vec<Declaration> = vec![Declaration::Function {
+            name: "main".to_string(),
+            args: vec![],
+            return_type: Type::Int,
+            statements: vec![Statement::Expression(Expr::BinaryOperation {
+                op: BinOp::Assign,
+                left: Box::new(Expr::Variable("x".to_string())),
+                right: Box::new(Expr::IntLiteral(1)),
+            })],
+        }];
+        let result = parse(input)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_precedence() -> Result<(), String> {
+        let tokenize_input = "int main() { x = 1 + 2 * 3; x = 1 * 2 + 3; }";
         let input: Vec<_> = tokenize(tokenize_input)?;
         let expected: Vec<Declaration> = vec![Declaration::Function {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
             statements: vec![
-                Statement::VarDeclare {
-                    name: "x".to_string(),
-                    var_type: Type::Int,
-                    value: Some(Expr::IntLiteral(1)),
-                },
-                Statement::If {
-                    condition: Expr::Variable("x".to_string()),
-                    true_block: vec![Statement::Return(Expr::IntLiteral(1))],
-                    false_block: Some(vec![Statement::Return(Expr::IntLiteral(0))]),
-                },
+                Statement::Expression(Expr::BinaryOperation {
+                    op: BinOp::Assign,
+                    left: Box::new(Expr::Variable("x".to_string())),
+                    right: Box::new(Expr::BinaryOperation {
+                        op: BinOp::Add,
+                        left: Box::new(Expr::IntLiteral(1)),
+                        right: Box::new(Expr::BinaryOperation {
+                            op: BinOp::Mul,
+                            left: Box::new(Expr::IntLiteral(2)),
+                            right: Box::new(Expr::IntLiteral(3)),
+                        }),
+                    }),
+                }),
+                Statement::Expression(Expr::BinaryOperation {
+                    op: BinOp::Assign,
+                    left: Box::new(Expr::Variable("x".to_string())),
+                    right: Box::new(Expr::BinaryOperation {
+                        op: BinOp::Add,
+                        left: Box::new(Expr::BinaryOperation {
+                            op: BinOp::Mul,
+                            left: Box::new(Expr::IntLiteral(1)),
+                            right: Box::new(Expr::IntLiteral(2)),
+                        }),
+                        right: Box::new(Expr::IntLiteral(3)),
+                    }),
+                }),
             ],
+        }];
+        let result = parse(input)?;
+        assert_eq!(result, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn test_parens() -> Result<(), String> {
+        let tokenize_input = "int main() { x = ((1 + 2) * 3); }";
+        let input: Vec<_> = tokenize(tokenize_input)?;
+        let expected: Vec<Declaration> = vec![Declaration::Function {
+            name: "main".to_string(),
+            args: vec![],
+            return_type: Type::Int,
+            statements: vec![Statement::Expression(Expr::BinaryOperation {
+                op: BinOp::Assign,
+                left: Box::new(Expr::Variable("x".to_string())),
+                right: Box::new(Expr::Parenthesis(Box::new(Expr::BinaryOperation {
+                    op: BinOp::Mul,
+                    left: Box::new(Expr::Parenthesis(Box::new(Expr::BinaryOperation {
+                        op: BinOp::Add,
+                        left: Box::new(Expr::IntLiteral(1)),
+                        right: Box::new(Expr::IntLiteral(2)),
+                    }))),
+                    right: Box::new(Expr::IntLiteral(3)),
+                }))),
+            })],
         }];
         let result = parse(input)?;
         assert_eq!(result, expected);
