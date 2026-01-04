@@ -1,87 +1,5 @@
+use crate::ast::*;
 use crate::tokenizer::{Token, tokenize};
-
-#[derive(Debug, Eq, Hash, PartialEq)]
-pub enum BinOp {
-    Add,
-    Sub,
-    Mul,
-    Div,
-    Assign,
-    Equals,
-}
-
-impl BinOp {
-    fn from_token(token: &Token) -> Result<BinOp, String> {
-        match token {
-            Token::Operator("+") => Ok(BinOp::Add),
-            Token::Operator("-") => Ok(BinOp::Sub),
-            Token::Operator("*") => Ok(BinOp::Mul),
-            Token::Operator("/") => Ok(BinOp::Div),
-            Token::Operator("=") => Ok(BinOp::Assign),
-            Token::Operator("==") => Ok(BinOp::Equals),
-            _ => Err(format!("Cannot construct BinOp from {:?}", token)),
-        }
-    }
-
-    fn precedence(&self) -> u32 {
-        match self {
-            BinOp::Add => 30,
-            BinOp::Sub => 30,
-            BinOp::Mul => 40,
-            BinOp::Div => 40,
-            BinOp::Assign => 10,
-            BinOp::Equals => 20,
-        }
-    }
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Expr {
-    IntLiteral(u64),
-    StringLiteral(String),
-    // TODO: CharLiteral,
-    Variable(String),
-    BinaryOperation {
-        op: BinOp,
-        left: Box<Expr>,
-        right: Box<Expr>,
-    },
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Statement {
-    Return(Expr),
-    Expression(Expr),
-    VarDeclare {
-        name: String,
-        var_type: Type,
-        value: Option<Expr>,
-    },
-    If {
-        condition: Expr,
-        true_block: Vec<Statement>,
-        false_block: Option<Vec<Statement>>,
-    },
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Type {
-    Void,
-    Int,
-    Char,
-    UserDefined(String),
-    // TODO: float, ptr, etc.
-}
-
-#[derive(PartialEq, Debug)]
-pub enum Declaration {
-    Function {
-        name: String,
-        args: Vec<(Type, String)>,
-        return_type: Type,
-        statements: Vec<Statement>,
-    },
-}
 
 struct Parser<'a> {
     tokens: &'a [Token<'a>],
@@ -93,7 +11,7 @@ impl<'a> Parser<'a> {
         Parser { tokens, pos: 0 }
     }
 
-    fn peek(&mut self) -> Option<&Token<'a>> {
+    fn peek(&self) -> Option<&Token<'a>> {
         self.tokens.get(self.pos)
     }
 
@@ -117,7 +35,6 @@ impl<'a> Parser<'a> {
         let mut brace_block: Vec<Statement> = vec![];
         while self.peek() != Some(&Token::CloseBrace) {
             brace_block.push(self.parse_statement()?);
-            println!("Parsed statement: {:?}", brace_block.last());
         }
         self.expect(&Token::CloseBrace)?;
 
@@ -159,7 +76,6 @@ impl<'a> Parser<'a> {
 
     fn parse_expression(&mut self) -> Result<Expr, String> {
         let lhs = self.parse_primary_expression()?;
-        println!("parse expression: lhs {:?}", lhs);
         self.parse_expression_precedence(lhs, 0)
     }
 
@@ -178,7 +94,6 @@ impl<'a> Parser<'a> {
             self.advance(); // Consume the operator
 
             let mut rhs = self.parse_primary_expression()?;
-            println!("parse rxpr prec: op: {:?}, rhs: {:?}", op, rhs);
 
             // Look ahead to see if we should bind rhs to the next operator first
             while let Some(next_token) = self.peek() {
@@ -271,29 +186,22 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_statement(&mut self) -> Result<Statement, String> {
-        match self.peek() {
-            Some(Token::Keyword("return")) => {
+        let token = self.peek();
+        let next_token = self.tokens.get(self.pos + 1);
+        match (token, next_token) {
+            (Some(Token::Keyword("return")), _) => {
                 self.advance();
                 let expression = self.parse_expression()?;
                 self.expect(&Token::Semicolon)?;
                 Ok(Statement::Return(expression))
             }
-            Some(Token::Keyword("if")) => self.parse_if_else(),
-            Some(Token::Keyword("int"))
-            | Some(Token::Keyword("char"))
-            | Some(Token::Identifier(_)) => {
-                let next_token = self.tokens.get(self.pos + 1);
-                match next_token {
-                    Some(Token::Identifier(_)) => self.parse_variable_declaration(),
-                    _ => {
-                        let expression = self.parse_expression()?;
-                        self.expect(&Token::Semicolon)?;
-                        Ok(Statement::Expression(expression))
-                    }
-                }
+            (Some(Token::Keyword("if")), _) => self.parse_if_else(),
+            (Some(Token::Keyword("int")), _)
+            | (Some(Token::Keyword("char")), _)
+            | (Some(Token::Identifier(_)), Some(Token::Identifier(_))) => {
+                self.parse_variable_declaration()
             }
-
-            None => Err("End of input.".to_string()),
+            (None, _) => Err("End of input.".to_string()),
             _ => {
                 let expression = self.parse_expression()?;
                 self.expect(&Token::Semicolon)?;
@@ -310,7 +218,6 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Declaration>, String> {
     assert_eq!(*tokens.last().unwrap(), Token::CloseBrace);
 
     let function_body_tokens = tokens[expected_prefix.len()..].to_vec();
-    println!("function body tokens: {:?}", function_body_tokens);
     let mut parser = Parser::new(&function_body_tokens);
 
     let function_body = parser.parse_brace_block()?;
@@ -324,9 +231,8 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Declaration>, String> {
 }
 
 mod tests {
-    use crate::tokenizer::tokenize;
-
     use super::*;
+    use crate::tokenizer::tokenize;
 
     #[test]
     fn test_main() -> Result<(), String> {
