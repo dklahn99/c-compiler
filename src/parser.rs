@@ -1,9 +1,7 @@
 use crate::tokenizer::{Token, tokenize};
-use std::collections::HashMap;
-use std::hash::{BuildHasherDefault, DefaultHasher};
 
 #[derive(Debug, Eq, Hash, PartialEq)]
-enum BinOp {
+pub enum BinOp {
     Add,
     Sub,
     Mul,
@@ -38,12 +36,11 @@ impl BinOp {
 }
 
 #[derive(PartialEq, Debug)]
-enum Expr {
+pub enum Expr {
     IntLiteral(u64),
     StringLiteral(String),
     // TODO: CharLiteral,
     Variable(String),
-    Parenthesis(Box<Expr>),
     BinaryOperation {
         op: BinOp,
         left: Box<Expr>,
@@ -52,7 +49,7 @@ enum Expr {
 }
 
 #[derive(PartialEq, Debug)]
-enum Statement {
+pub enum Statement {
     Return(Expr),
     Expression(Expr),
     VarDeclare {
@@ -68,7 +65,7 @@ enum Statement {
 }
 
 #[derive(PartialEq, Debug)]
-enum Type {
+pub enum Type {
     Void,
     Int,
     Char,
@@ -94,10 +91,6 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token]) -> Self {
         Parser { tokens, pos: 0 }
-    }
-
-    fn len(&self) -> usize {
-        self.tokens.len() - self.pos
     }
 
     fn peek(&mut self) -> Option<&Token<'a>> {
@@ -310,7 +303,7 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<Vec<Declaration>, String> {
+pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Declaration>, String> {
     // For now assume we're only parsing main functions
     let expected_prefix = tokenize("int main()")?;
     assert_eq!(tokens[..expected_prefix.len()], expected_prefix);
@@ -331,7 +324,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Declaration>, String> {
 }
 
 mod tests {
-    use crate::tokenizer::{self, tokenize};
+    use crate::tokenizer::tokenize;
 
     use super::*;
 
@@ -344,7 +337,7 @@ mod tests {
             return_type: Type::Int,
             statements: vec![Statement::Return(Expr::IntLiteral(0))],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -379,7 +372,7 @@ mod tests {
                 },
             ],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -401,7 +394,7 @@ mod tests {
                 Statement::Return(Expr::IntLiteral(1)),
             ],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -420,7 +413,7 @@ mod tests {
                 false_block: Some(vec![Statement::Return(Expr::IntLiteral(0))]),
             }],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -439,7 +432,7 @@ mod tests {
                 right: Box::new(Expr::IntLiteral(1)),
             })],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -481,7 +474,7 @@ mod tests {
                 }),
             ],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
@@ -508,7 +501,7 @@ mod tests {
                 }),
             })],
         }];
-        let result = parse(input)?;
+        let result = parse(&input)?;
         assert_eq!(result, expected);
         Ok(())
     }
