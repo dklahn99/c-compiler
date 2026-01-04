@@ -5,7 +5,7 @@
 */
 
 const KEYWORDS: [&'static str; 6] = ["void", "int", "char", "return", "if", "else"];
-const OPERATORS: [&'static str; 4] = ["+", "-", "=", "=="];
+const OPERATORS: [&'static str; 6] = ["+", "-", "*", "/", "=", "=="];
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Token<'a> {

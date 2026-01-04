@@ -1,6 +1,8 @@
 use crate::tokenizer::{Token, tokenize};
+use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, DefaultHasher};
 
-#[derive(PartialEq, Debug)]
+#[derive(Debug, Eq, Hash, PartialEq)]
 enum BinOp {
     Add,
     Sub,
@@ -8,6 +10,31 @@ enum BinOp {
     Div,
     Assign,
     Equals,
+}
+
+impl BinOp {
+    fn from_token(token: &Token) -> Result<BinOp, String> {
+        match token {
+            Token::Operator("+") => Ok(BinOp::Add),
+            Token::Operator("-") => Ok(BinOp::Sub),
+            Token::Operator("*") => Ok(BinOp::Mul),
+            Token::Operator("/") => Ok(BinOp::Div),
+            Token::Operator("=") => Ok(BinOp::Assign),
+            Token::Operator("==") => Ok(BinOp::Equals),
+            _ => Err(format!("Cannot construct BinOp from {:?}", token)),
+        }
+    }
+
+    fn precedence(&self) -> u32 {
+        match self {
+            BinOp::Add => 30,
+            BinOp::Sub => 30,
+            BinOp::Mul => 40,
+            BinOp::Div => 40,
+            BinOp::Assign => 10,
+            BinOp::Equals => 20,
+        }
+    }
 }
 
 #[derive(PartialEq, Debug)]
@@ -50,7 +77,7 @@ enum Type {
 }
 
 #[derive(PartialEq, Debug)]
-enum Declaration {
+pub enum Declaration {
     Function {
         name: String,
         args: Vec<(Type, String)>,
@@ -138,17 +165,48 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<Expr, String> {
-        let left = self.parse_primary_expression()?;
+        let lhs = self.parse_primary_expression()?;
+        println!("parse expression: lhs {:?}", lhs);
+        self.parse_expression_precedence(lhs, 0)
+    }
 
-        /*
-         x + y * z --> Add(x, Mul(y, z))
-         x * y + z --> Add(Mul(x, y), z)
+    fn parse_expression_precedence(
+        &mut self,
+        mut lhs: Expr,
+        min_precedence: u32,
+    ) -> Result<Expr, String> {
+        while let Some(token) = self.peek() {
+            // Try to get the operator and its precedence
+            let op = match BinOp::from_token(token) {
+                Ok(op) if op.precedence() >= min_precedence => op,
+                _ => break, // Not an operator or precedence too low
+            };
 
+            self.advance(); // Consume the operator
 
+            let mut rhs = self.parse_primary_expression()?;
+            println!("parse rxpr prec: op: {:?}, rhs: {:?}", op, rhs);
 
-        */
+            // Look ahead to see if we should bind rhs to the next operator first
+            while let Some(next_token) = self.peek() {
+                let next_op = match BinOp::from_token(next_token) {
+                    Ok(next_op) if next_op.precedence() > op.precedence() => next_op,
+                    _ => break,
+                };
 
-        Ok(left)
+                // Next operator has higher precedence, recurse
+                rhs = self.parse_expression_precedence(rhs, next_op.precedence())?;
+            }
+
+            // Build the binary expression
+            lhs = Expr::BinaryOperation {
+                op,
+                left: Box::new(lhs),
+                right: Box::new(rhs),
+            };
+        }
+
+        Ok(lhs)
     }
 
     fn parse_variable_declaration(&mut self) -> Result<Statement, String> {
@@ -230,7 +288,18 @@ impl<'a> Parser<'a> {
             Some(Token::Keyword("if")) => self.parse_if_else(),
             Some(Token::Keyword("int"))
             | Some(Token::Keyword("char"))
-            | Some(Token::Identifier(_)) => self.parse_variable_declaration(),
+            | Some(Token::Identifier(_)) => {
+                let next_token = self.tokens.get(self.pos + 1);
+                match next_token {
+                    Some(Token::Identifier(_)) => self.parse_variable_declaration(),
+                    _ => {
+                        let expression = self.parse_expression()?;
+                        self.expect(&Token::Semicolon)?;
+                        Ok(Statement::Expression(expression))
+                    }
+                }
+            }
+
             None => Err("End of input.".to_string()),
             _ => {
                 let expression = self.parse_expression()?;
@@ -428,15 +497,15 @@ mod tests {
             statements: vec![Statement::Expression(Expr::BinaryOperation {
                 op: BinOp::Assign,
                 left: Box::new(Expr::Variable("x".to_string())),
-                right: Box::new(Expr::Parenthesis(Box::new(Expr::BinaryOperation {
+                right: Box::new(Expr::BinaryOperation {
                     op: BinOp::Mul,
-                    left: Box::new(Expr::Parenthesis(Box::new(Expr::BinaryOperation {
+                    left: Box::new(Expr::BinaryOperation {
                         op: BinOp::Add,
                         left: Box::new(Expr::IntLiteral(1)),
                         right: Box::new(Expr::IntLiteral(2)),
-                    }))),
+                    }),
                     right: Box::new(Expr::IntLiteral(3)),
-                }))),
+                }),
             })],
         }];
         let result = parse(input)?;
