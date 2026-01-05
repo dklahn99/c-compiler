@@ -4,11 +4,16 @@ use crate::tokenizer::{Token, tokenize};
 struct Parser<'a> {
     tokens: &'a [Token<'a>],
     pos: usize,
+    scope_id_counter: ScopeIdCounter,
 }
 
 impl<'a> Parser<'a> {
     fn new(tokens: &'a [Token]) -> Self {
-        Parser { tokens, pos: 0 }
+        Parser {
+            tokens,
+            pos: 0,
+            scope_id_counter: ScopeIdCounter { counter: 0 },
+        }
     }
 
     fn peek(&self) -> Option<&Token<'a>> {
@@ -168,20 +173,23 @@ impl<'a> Parser<'a> {
         let condition = self.parse_expression()?;
         self.expect(&Token::CloseParen)?;
 
-        let true_block = self.parse_brace_block()?;
+        let true_statements = self.parse_brace_block()?;
 
-        let false_block = match self.peek() {
+        let false_statements = match self.peek() {
             Some(&Token::Keyword("else")) => {
                 self.expect(&Token::Keyword("else"))?;
-                Some(self.parse_brace_block()?)
+                Some(Scope::from_statements(
+                    self.parse_brace_block()?,
+                    &mut self.scope_id_counter,
+                ))
             }
             _ => None,
         };
 
         Ok(Statement::If {
             condition,
-            true_block,
-            false_block,
+            true_block: Scope::from_statements(true_statements, &mut self.scope_id_counter),
+            false_block: false_statements,
         })
     }
 
@@ -226,7 +234,7 @@ pub fn parse(tokens: &Vec<Token>) -> Result<Vec<Declaration>, String> {
         name: "main".to_string(),
         args: vec![],
         return_type: Type::Int,
-        statements: function_body,
+        scope: Scope::from_statements(function_body, &mut parser.scope_id_counter),
     }])
 }
 
@@ -241,7 +249,10 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![Statement::Return(Expr::IntLiteral(0))],
+            scope: Scope {
+                id: 1,
+                statements: vec![Statement::Return(Expr::IntLiteral(0))],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -260,23 +271,26 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![
-                Statement::VarDeclare {
-                    name: "x".to_string(),
-                    var_type: Type::Int,
-                    value: None,
-                },
-                Statement::VarDeclare {
-                    name: "y".to_string(),
-                    var_type: Type::Int,
-                    value: Some(Expr::Variable("x".to_string())),
-                },
-                Statement::VarDeclare {
-                    name: "z".to_string(),
-                    var_type: Type::UserDefined("MyType".to_string()),
-                    value: Some(Expr::StringLiteral(z_value)),
-                },
-            ],
+            scope: Scope {
+                id: 1,
+                statements: vec![
+                    Statement::VarDeclare {
+                        name: "x".to_string(),
+                        var_type: Type::Int,
+                        value: None,
+                    },
+                    Statement::VarDeclare {
+                        name: "y".to_string(),
+                        var_type: Type::Int,
+                        value: Some(Expr::Variable("x".to_string())),
+                    },
+                    Statement::VarDeclare {
+                        name: "z".to_string(),
+                        var_type: Type::UserDefined("MyType".to_string()),
+                        value: Some(Expr::StringLiteral(z_value)),
+                    },
+                ],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -291,14 +305,20 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![
-                Statement::If {
-                    condition: Expr::Variable("x".to_string()),
-                    true_block: vec![Statement::Return(Expr::IntLiteral(0))],
-                    false_block: None,
-                },
-                Statement::Return(Expr::IntLiteral(1)),
-            ],
+            scope: Scope {
+                id: 2,
+                statements: vec![
+                    Statement::If {
+                        condition: Expr::Variable("x".to_string()),
+                        true_block: Scope {
+                            id: 1,
+                            statements: vec![Statement::Return(Expr::IntLiteral(0))],
+                        },
+                        false_block: None,
+                    },
+                    Statement::Return(Expr::IntLiteral(1)),
+                ],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -313,11 +333,20 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![Statement::If {
-                condition: Expr::Variable("x".to_string()),
-                true_block: vec![Statement::Return(Expr::IntLiteral(1))],
-                false_block: Some(vec![Statement::Return(Expr::IntLiteral(0))]),
-            }],
+            scope: Scope {
+                id: 3,
+                statements: vec![Statement::If {
+                    condition: Expr::Variable("x".to_string()),
+                    true_block: Scope {
+                        id: 2,
+                        statements: vec![Statement::Return(Expr::IntLiteral(1))],
+                    },
+                    false_block: Some(Scope {
+                        id: 1,
+                        statements: vec![Statement::Return(Expr::IntLiteral(0))],
+                    }),
+                }],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -332,11 +361,14 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![Statement::Expression(Expr::BinaryOperation {
-                op: BinOp::Assign,
-                left: Box::new(Expr::Variable("x".to_string())),
-                right: Box::new(Expr::IntLiteral(1)),
-            })],
+            scope: Scope {
+                id: 1,
+                statements: vec![Statement::Expression(Expr::BinaryOperation {
+                    op: BinOp::Assign,
+                    left: Box::new(Expr::Variable("x".to_string())),
+                    right: Box::new(Expr::IntLiteral(1)),
+                })],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -351,34 +383,37 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![
-                Statement::Expression(Expr::BinaryOperation {
-                    op: BinOp::Assign,
-                    left: Box::new(Expr::Variable("x".to_string())),
-                    right: Box::new(Expr::BinaryOperation {
-                        op: BinOp::Add,
-                        left: Box::new(Expr::IntLiteral(1)),
+            scope: Scope {
+                id: 1,
+                statements: vec![
+                    Statement::Expression(Expr::BinaryOperation {
+                        op: BinOp::Assign,
+                        left: Box::new(Expr::Variable("x".to_string())),
                         right: Box::new(Expr::BinaryOperation {
-                            op: BinOp::Mul,
-                            left: Box::new(Expr::IntLiteral(2)),
+                            op: BinOp::Add,
+                            left: Box::new(Expr::IntLiteral(1)),
+                            right: Box::new(Expr::BinaryOperation {
+                                op: BinOp::Mul,
+                                left: Box::new(Expr::IntLiteral(2)),
+                                right: Box::new(Expr::IntLiteral(3)),
+                            }),
+                        }),
+                    }),
+                    Statement::Expression(Expr::BinaryOperation {
+                        op: BinOp::Assign,
+                        left: Box::new(Expr::Variable("x".to_string())),
+                        right: Box::new(Expr::BinaryOperation {
+                            op: BinOp::Add,
+                            left: Box::new(Expr::BinaryOperation {
+                                op: BinOp::Mul,
+                                left: Box::new(Expr::IntLiteral(1)),
+                                right: Box::new(Expr::IntLiteral(2)),
+                            }),
                             right: Box::new(Expr::IntLiteral(3)),
                         }),
                     }),
-                }),
-                Statement::Expression(Expr::BinaryOperation {
-                    op: BinOp::Assign,
-                    left: Box::new(Expr::Variable("x".to_string())),
-                    right: Box::new(Expr::BinaryOperation {
-                        op: BinOp::Add,
-                        left: Box::new(Expr::BinaryOperation {
-                            op: BinOp::Mul,
-                            left: Box::new(Expr::IntLiteral(1)),
-                            right: Box::new(Expr::IntLiteral(2)),
-                        }),
-                        right: Box::new(Expr::IntLiteral(3)),
-                    }),
-                }),
-            ],
+                ],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);
@@ -393,19 +428,22 @@ mod tests {
             name: "main".to_string(),
             args: vec![],
             return_type: Type::Int,
-            statements: vec![Statement::Expression(Expr::BinaryOperation {
-                op: BinOp::Assign,
-                left: Box::new(Expr::Variable("x".to_string())),
-                right: Box::new(Expr::BinaryOperation {
-                    op: BinOp::Mul,
-                    left: Box::new(Expr::BinaryOperation {
-                        op: BinOp::Add,
-                        left: Box::new(Expr::IntLiteral(1)),
-                        right: Box::new(Expr::IntLiteral(2)),
+            scope: Scope {
+                id: 1,
+                statements: vec![Statement::Expression(Expr::BinaryOperation {
+                    op: BinOp::Assign,
+                    left: Box::new(Expr::Variable("x".to_string())),
+                    right: Box::new(Expr::BinaryOperation {
+                        op: BinOp::Mul,
+                        left: Box::new(Expr::BinaryOperation {
+                            op: BinOp::Add,
+                            left: Box::new(Expr::IntLiteral(1)),
+                            right: Box::new(Expr::IntLiteral(2)),
+                        }),
+                        right: Box::new(Expr::IntLiteral(3)),
                     }),
-                    right: Box::new(Expr::IntLiteral(3)),
-                }),
-            })],
+                })],
+            },
         }];
         let result = parse(&input)?;
         assert_eq!(result, expected);

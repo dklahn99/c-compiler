@@ -1,4 +1,5 @@
 use crate::tokenizer::Token;
+use std::cell::Cell;
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum BinOp {
@@ -35,6 +36,26 @@ impl BinOp {
     }
 }
 
+pub struct ScopeIdCounter {
+    pub counter: u32,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Scope {
+    pub id: u32,
+    pub statements: Vec<Statement>,
+}
+
+impl Scope {
+    pub fn from_statements(statements: Vec<Statement>, id_counter: &mut ScopeIdCounter) -> Self {
+        id_counter.counter += 1;
+        Scope {
+            id: id_counter.counter,
+            statements,
+        }
+    }
+}
+
 #[derive(PartialEq, Debug)]
 pub enum Expr {
     IntLiteral(u64),
@@ -59,8 +80,8 @@ pub enum Statement {
     },
     If {
         condition: Expr,
-        true_block: Vec<Statement>,
-        false_block: Option<Vec<Statement>>,
+        true_block: Scope,
+        false_block: Option<Scope>,
     },
 }
 
@@ -77,8 +98,14 @@ pub enum Type {
 pub enum Declaration {
     Function {
         name: String,
-        args: Vec<(Type, String)>,
+        args: Vec<VarInfo>,
         return_type: Type,
-        statements: Vec<Statement>,
+        scope: Scope,
     },
+}
+
+#[derive(Debug, PartialEq)]
+pub struct VarInfo {
+    name: String,
+    var_type: Type,
 }

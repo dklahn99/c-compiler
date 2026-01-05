@@ -3,6 +3,7 @@ use std::fs::read_to_string;
 mod ast;
 mod parser;
 // mod symantic_check;
+mod symbol_table;
 mod tokenizer;
 
 fn main() {
