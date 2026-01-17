@@ -106,6 +106,6 @@ pub enum Declaration {
 
 #[derive(Debug, PartialEq)]
 pub struct VarInfo {
-    name: String,
-    var_type: Type,
+    pub name: String,
+    pub var_type: Type,
 }
