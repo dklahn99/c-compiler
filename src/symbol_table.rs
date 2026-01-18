@@ -1,15 +1,15 @@
 use crate::ast::*;
 use std::collections::HashMap;
 
-// TODO: each variable should have a unique ID so that the get() method can be more specific
 #[derive(Debug)]
 pub struct SymbolTable {
     vars: HashMap<(u32, String), VarInfo>, // key is (scope_id, var_name)
     scope_tree: HashMap<u32, u32>,         // maps scope id to parent scope id
 }
 
+// TODO: should fail when there are collisions/duplicate insertions
 impl SymbolTable {
-    pub fn new() -> Self {
+    fn new() -> Self {
         SymbolTable {
             vars: HashMap::new(),
             scope_tree: HashMap::new(),
@@ -44,8 +44,7 @@ impl SymbolTable {
                     ..
                 } => {
                     table.add_child_scope(*id, true_block);
-                    if false_block.is_some() {
-                        let false_scope = false_block.as_ref().unwrap();
+                    if let Some(false_scope) = false_block {
                         table.add_child_scope(*id, false_scope);
                     }
                 }
@@ -67,19 +66,16 @@ impl SymbolTable {
         self.scope_tree.insert(child.id, parent_id);
     }
 
-    pub fn get(&self, scope_id: u32, var_name: &String) -> Option<&VarInfo> {
-        // look up starting scope with scope_id
-        // search ScopeTable and parents for var_name
-        match self.vars.get(&(scope_id, var_name.clone())) {
-            Some(x) => Some(x),
-            None => {
-                let parent_scope = self.scope_tree.get(&scope_id);
-                match parent_scope {
-                    Some(parent_id) => self.get(*parent_id, var_name),
-                    None => None,
-                }
-            }
+    pub fn get(&self, scope_id: u32, var_name: &str) -> Option<&VarInfo> {
+        // If current scope has the variable, return it.
+        // Otherwise, search the parent scope.
+        if let Some(var_info) = self.vars.get(&(scope_id, var_name.to_string())) {
+            return Some(var_info);
         }
+        if let Some(parent_scope) = self.scope_tree.get(&scope_id) {
+            return self.get(*parent_scope, var_name);
+        }
+        None
     }
 }
 
@@ -87,7 +83,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_st_debug() -> Result<(), String> {
+    fn test_st() -> Result<(), String> {
         let scope = Scope {
             id: 1,
             statements: vec![
@@ -102,7 +98,7 @@ mod tests {
                         id: 2,
                         statements: vec![Statement::VarDeclare {
                             name: "x".to_owned(),
-                            var_type: Type::Int,
+                            var_type: Type::UserDefined("MyType".to_owned()),
                             value: None,
                         }],
                     },
@@ -118,12 +114,35 @@ mod tests {
             ],
         };
         let st = SymbolTable::from_scope(&scope);
-        println!("{:?}", st);
-        println!("{:?}", st.get(1, &"x".to_owned()));
-        println!("{:?}", st.get(2, &"x".to_owned()));
-        println!("{:?}", st.get(3, &"x".to_owned()));
-        println!("{:?}", st.get(3, &"y".to_owned()));
-        println!("{:?}", st.get(1, &"y".to_owned()));
+        assert_eq!(
+            st.get(1, "x"),
+            Some(&VarInfo {
+                name: "x".to_owned(),
+                var_type: Type::Int
+            })
+        );
+        assert_eq!(
+            st.get(2, "x"),
+            Some(&VarInfo {
+                name: "x".to_owned(),
+                var_type: Type::UserDefined("MyType".to_owned())
+            })
+        );
+        assert_eq!(
+            st.get(3, "x"),
+            Some(&VarInfo {
+                name: "x".to_owned(),
+                var_type: Type::Int
+            })
+        );
+        assert_eq!(
+            st.get(3, "y"),
+            Some(&VarInfo {
+                name: "y".to_owned(),
+                var_type: Type::Int
+            })
+        );
+        assert_eq!(st.get(2, "y"), None);
         Ok(())
     }
 }
