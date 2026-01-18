@@ -85,7 +85,7 @@ pub enum Statement {
     },
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Type {
     Void,
     Int,
