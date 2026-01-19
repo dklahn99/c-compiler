@@ -41,9 +41,9 @@ impl SymbolTable {
                     false_block,
                     ..
                 } => {
-                    table.add_child_scope(*id, true_block);
+                    table.add_child_scope(*id, true_block)?;
                     if let Some(false_scope) = false_block {
-                        table.add_child_scope(*id, false_scope);
+                        table.add_child_scope(*id, false_scope)?;
                     }
                 }
                 _ => {}
@@ -54,7 +54,7 @@ impl SymbolTable {
     }
 
     fn insert(&mut self, scope_id: u32, var_name: &str, var_info: VarInfo) -> Result<(), String> {
-        if let Some(_) = self.get(scope_id, var_name) {
+        if self.vars.contains_key(&(scope_id, var_name.to_owned())) {
             return Err(format!(
                 "Duplicate insertion of variable {:} into scope {:}.",
                 var_name, scope_id
@@ -163,8 +163,7 @@ mod tests {
     #[test]
     fn test_symbol_table_duplicate() -> Result<(), String> {
         let mut st = make_symbol_table()?;
-        assert_ne!(
-            Ok(()),
+        assert!(
             st.insert(
                 1,
                 "x",
@@ -173,6 +172,7 @@ mod tests {
                     var_type: Type::Int,
                 },
             )
+            .is_err()
         );
         Ok(())
     }
