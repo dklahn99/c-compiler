@@ -1,7 +1,7 @@
 use crate::ast::*;
 use std::collections::HashMap;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct SymbolTable {
     vars: HashMap<(u32, String), VarInfo>, // key is (scope_id, var_name)
     scope_tree: HashMap<u32, u32>,         // maps scope id to parent scope id
@@ -17,15 +17,25 @@ impl SymbolTable {
 
     pub fn from_function(dec: &Declaration) -> Result<Self, String> {
         // TODO: also add args to scope
-        let Declaration::Function { scope, .. } = dec;
-        Self::from_scope(scope)
+        let Declaration::Function { args, scope, .. } = dec;
+        let mut table = Self::from_scope(scope)?;
+        for v in args {
+            table.insert(
+                scope.id,
+                &v.name,
+                VarInfo {
+                    name: v.name.clone(),
+                    var_type: v.var_type.clone(),
+                },
+            )?;
+        }
+        Ok(table)
     }
 
     fn from_scope(scope: &Scope) -> Result<Self, String> {
         let Scope { id, statements } = scope;
 
         let mut table = Self::new();
-
         for s in statements {
             match s {
                 Statement::VarDeclare { name, var_type, .. } => table.insert(
