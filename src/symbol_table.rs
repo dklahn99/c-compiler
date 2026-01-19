@@ -92,8 +92,7 @@ impl SymbolTable {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_st() -> Result<(), String> {
+    fn make_symbol_table() -> Result<SymbolTable, String> {
         let scope = Scope {
             id: 1,
             statements: vec![
@@ -123,7 +122,12 @@ mod tests {
                 },
             ],
         };
-        let st = SymbolTable::from_scope(&scope)?;
+        SymbolTable::from_scope(&scope)
+    }
+
+    #[test]
+    fn test_symbol_table_get() -> Result<(), String> {
+        let st = make_symbol_table()?;
         assert_eq!(
             st.get(1, "x"),
             Some(&VarInfo {
@@ -153,6 +157,23 @@ mod tests {
             })
         );
         assert_eq!(st.get(2, "y"), None);
+        Ok(())
+    }
+
+    #[test]
+    fn test_symbol_table_duplicate() -> Result<(), String> {
+        let mut st = make_symbol_table()?;
+        assert_ne!(
+            Ok(()),
+            st.insert(
+                1,
+                "x",
+                VarInfo {
+                    name: "x".to_owned(),
+                    var_type: Type::Int,
+                },
+            )
+        );
         Ok(())
     }
 }
