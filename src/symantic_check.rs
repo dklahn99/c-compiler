@@ -1,11 +1,9 @@
 use crate::ast::*;
 use crate::symbol_table::SymbolTable;
-use std::collections::HashMap;
-use std::thread::scope;
 
 fn check_scope_expr(expr: &Expr, scope_id: u32, symbol_table: &SymbolTable) -> Result<(), String> {
     match expr {
-        Expr::BinaryOperation { op, left, right } => {
+        Expr::BinaryOperation { left, right, .. } => {
             check_scope_expr(left, scope_id, symbol_table)?;
             check_scope_expr(right, scope_id, symbol_table)?;
             Ok(())
@@ -49,19 +47,12 @@ fn check_scope(scope: &Scope, symbol_table: &SymbolTable) -> Result<(), String> 
     Ok(())
 }
 
-fn check_types() {}
-
 pub fn check_syntax(declarations: &Vec<Declaration>) -> Result<SymbolTable, String> {
     // For now, we're only considering programs with a single declaration: a main function
     assert_eq!(declarations.len(), 1);
 
     let symbol_table = SymbolTable::from_function(&declarations[0])?;
-    let Declaration::Function {
-        name,
-        args,
-        return_type,
-        scope,
-    } = &declarations[0];
+    let Declaration::Function { scope, .. } = &declarations[0];
 
     check_scope(&scope, &symbol_table)?;
     Ok(symbol_table)
@@ -70,7 +61,6 @@ pub fn check_syntax(declarations: &Vec<Declaration>) -> Result<SymbolTable, Stri
 mod tests {
     use super::*;
     use crate::parser::parse;
-    use crate::symbol_table;
     use crate::tokenizer::tokenize;
     use std::fs::read_to_string;
 
@@ -81,7 +71,7 @@ mod tests {
         let syntax_tree = parse(&tokens)?;
         assert_eq!(1, syntax_tree.len());
 
-        let symbol_table = check_syntax(&syntax_tree)?;
+        check_syntax(&syntax_tree)?;
         Ok(())
     }
 

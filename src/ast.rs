@@ -1,6 +1,6 @@
 use crate::tokenizer::Token;
-use std::cell::Cell;
 
+#[allow(dead_code)]
 #[derive(Debug, Eq, Hash, PartialEq)]
 pub enum BinOp {
     Add,
@@ -11,6 +11,7 @@ pub enum BinOp {
     Equals,
 }
 
+#[allow(dead_code)]
 impl BinOp {
     pub fn from_token(token: &Token) -> Result<BinOp, String> {
         match token {
@@ -46,6 +47,7 @@ pub struct Scope {
     pub statements: Vec<Statement>,
 }
 
+#[allow(dead_code)]
 impl Scope {
     pub fn from_statements(statements: Vec<Statement>, id_counter: &mut ScopeIdCounter) -> Self {
         id_counter.counter += 1;

@@ -1,6 +1,4 @@
 use crate::ast;
-use crate::symantic_check;
-use crate::symbol_table::SymbolTable;
 use std::collections::HashMap;
 
 // Defines the Control Flow GRaph types
@@ -21,6 +19,7 @@ use std::collections::HashMap;
 type VarName = String;
 type ControlBlockId = u64;
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum BinOp {
     Add,
@@ -29,6 +28,7 @@ pub enum BinOp {
     Div,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, PartialEq)]
 pub enum Statement {
     // TODO: add in conditional support later
@@ -56,6 +56,7 @@ struct CFGBuildContext {
     var_map: HashMap<String, String>, // maps Symbol Table var names to CFG var names (e.g. "x" -> "v1")
 }
 
+#[allow(dead_code)]
 impl CFGBuildContext {
     fn new() -> Self {
         CFGBuildContext {
@@ -80,12 +81,15 @@ impl CFGBuildContext {
 }
 
 type ControlBlock = Vec<Statement>;
+
+#[allow(dead_code)]
 struct ControlFlowGraph(HashMap<ControlBlockId, ControlBlock>);
 
+#[allow(dead_code)]
 impl ControlFlowGraph {
     fn new() {}
 
-    pub fn from(declarations: &Vec<ast::Declaration>, symbol_table: &SymbolTable) -> Self {
+    pub fn from(declarations: &Vec<ast::Declaration>) -> Self {
         // For now, we're only considering programs with a single declaration: a main function
         assert_eq!(declarations.len(), 1);
 
@@ -132,6 +136,8 @@ impl ControlFlowGraph {
             value,
         } = stmt
         {
+            assert_eq!(var_type, &ast::Type::Int);
+
             context.register_var(name.clone());
             let cfg_var_name = context.lookup(name).expect("");
 
@@ -156,10 +162,10 @@ impl ControlFlowGraph {
 
 mod tests {
     use super::*;
-    use crate::parser::parse;
-    use crate::symantic_check::check_syntax;
-    use crate::tokenizer::tokenize;
-    use std::fs::read_to_string;
+    // use crate::parser::parse;
+    // use crate::symantic_check::check_syntax;
+    // use crate::tokenizer::tokenize;
+    // use std::fs::read_to_string;
 
     #[test]
     fn test_cfg_var_declare() -> Result<(), String> {
