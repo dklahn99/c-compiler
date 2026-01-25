@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::symbol_table::VarName;
 use std::collections::HashMap;
 
 // Defines the Control Flow GRaph types
@@ -16,7 +17,7 @@ use std::collections::HashMap;
     - binary operations
     - return var
 */
-type VarName = String;
+type CfgVarName = String;
 type ControlBlockId = u64;
 
 #[allow(dead_code)]
@@ -33,27 +34,30 @@ pub enum BinOp {
 pub enum Statement {
     // TODO: add in conditional support later
     // If {
-    //     var: VarName,
+    //     var: CfgVarName,
     //     goto_true: ControlBlockId,
     //     goto_false: ControlBlockId,
     // },
     Goto(ControlBlockId),
     Assign {
-        var: VarName,
+        var: CfgVarName,
         value: u64,
     },
     Operation {
-        dest: VarName,
+        dest: CfgVarName,
         op: BinOp,
-        lhs: VarName,
-        rhs: VarName,
+        lhs: CfgVarName,
+        rhs: CfgVarName,
     },
-    Return(VarName),
+    Return(CfgVarName),
 }
 
+/*
+ * Eventually, want to be able to map variable name in a scope to a cfg var name
+ */
 struct CFGBuildContext {
     var_counter: u64,
-    var_map: HashMap<String, String>, // maps Symbol Table var names to CFG var names (e.g. "x" -> "v1")
+    var_map: HashMap<VarName, CfgVarName>, // maps Symbol Table var names to CFG var names (e.g. "x" -> "v1")
 }
 
 #[allow(dead_code)]
@@ -65,17 +69,17 @@ impl CFGBuildContext {
         }
     }
 
-    fn inc(&mut self) -> VarName {
+    fn inc(&mut self) -> CfgVarName {
         self.var_counter += 1;
         format!("v{:}", self.var_counter)
     }
 
-    fn register_var(&mut self, var: VarName) {
+    fn register_var(&mut self, var: CfgVarName) {
         let a = self.inc();
         self.var_map.insert(var, a);
     }
 
-    fn lookup(&self, var: &VarName) -> Option<&VarName> {
+    fn lookup(&self, var: &VarName) -> Option<&CfgVarName> {
         self.var_map.get(var)
     }
 }
@@ -104,13 +108,12 @@ impl ControlFlowGraph {
         assert_eq!(*return_type, ast::Type::Int);
 
         let mut context = CFGBuildContext::new();
-
         let mut block: ControlBlock = vec![];
         for stmt in &scope.statements {
             block.append(&mut ControlFlowGraph::process(stmt, &mut context).expect(""));
         }
 
-        // build CFG. This should be a single block since we don't have any conditionals
+        // Right now this is just a single block since there are no conditionals
         ControlFlowGraph(HashMap::from([(0, block)]))
     }
 
@@ -120,13 +123,14 @@ impl ControlFlowGraph {
     ) -> Result<Vec<Statement>, String> {
         match stmt {
             ast::Statement::VarDeclare { .. } => {
-                ControlFlowGraph::stmt_from_var_declare(&stmt, context)
+                ControlFlowGraph::process_var_declare(&stmt, context)
             }
+            ast::Statement::Return(..) => ControlFlowGraph::process_return(&stmt, context),
             _ => Err("Not Implemented".to_owned()),
         }
     }
 
-    fn stmt_from_var_declare(
+    fn process_var_declare(
         stmt: &ast::Statement,
         context: &mut CFGBuildContext,
     ) -> Result<Vec<Statement>, String> {
@@ -155,8 +159,31 @@ impl ControlFlowGraph {
         Err(format!("Expected a VarDeclare, but got {:?}", stmt))
     }
 
-    fn var_name(i: u64) -> String {
-        return format!("v{:}", i);
+    fn process_return(
+        stmt: &ast::Statement,
+        context: &mut CFGBuildContext,
+    ) -> Result<Vec<Statement>, String> {
+        if let ast::Statement::Return(expr) = stmt {
+            match expr {
+                ast::Expr::IntLiteral(i) => {
+                    let cfg_var_name = context.inc();
+                    return Ok(vec![
+                        Statement::Assign {
+                            var: cfg_var_name.clone(),
+                            value: *i,
+                        },
+                        Statement::Return(cfg_var_name.clone()),
+                    ]);
+                }
+                ast::Expr::Variable(var_name) => {
+                    let cfg_var_name = context.lookup(var_name).expect("");
+                    return Ok(vec![Statement::Return(cfg_var_name.clone())]);
+                }
+                _ => return Err(format!("")),
+            };
+        };
+
+        Err(format!(""))
     }
 }
 
@@ -175,13 +202,54 @@ mod tests {
             value: Some(ast::Expr::IntLiteral(123)),
         };
 
-        let expected = vec![Statement::Assign {
-            var: "v1".to_owned(),
-            value: 123,
-        }];
+        let mut context = CFGBuildContext::new();
+        assert_eq!(
+            ControlFlowGraph::process(&vd, &mut context)?,
+            vec![Statement::Assign {
+                var: "v1".to_owned(),
+                value: 123,
+            }]
+        );
+        assert_eq!(
+            ControlFlowGraph::process(&vd, &mut context)?,
+            vec![Statement::Assign {
+                var: "v2".to_owned(),
+                value: 123,
+            }]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_return_int_literal() -> Result<(), String> {
+        let ret = ast::Statement::Return(ast::Expr::IntLiteral(123));
+        let mut context = CFGBuildContext::new();
+        assert_eq!(
+            ControlFlowGraph::process(&ret, &mut context)?,
+            vec![
+                Statement::Assign {
+                    var: "v1".to_owned(),
+                    value: 123,
+                },
+                Statement::Return("v1".to_owned()),
+            ]
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_return_var() -> Result<(), String> {
+        let ret = ast::Statement::Return(ast::Expr::Variable("x".to_owned()));
 
         let mut context = CFGBuildContext::new();
-        assert_eq!(ControlFlowGraph::process(&vd, &mut context)?, expected);
+        context.register_var("x".to_owned());
+
+        assert_eq!(
+            ControlFlowGraph::process(&ret, &mut context)?,
+            vec![Statement::Return("v1".to_owned()),]
+        );
 
         Ok(())
     }

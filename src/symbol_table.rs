@@ -1,10 +1,12 @@
 use crate::ast::*;
 use std::collections::HashMap;
 
+pub type VarName = String;
+
 #[derive(Debug, PartialEq)]
 pub struct SymbolTable {
-    vars: HashMap<(u32, String), VarInfo>, // key is (scope_id, var_name)
-    scope_tree: HashMap<u32, u32>,         // maps scope id to parent scope id
+    vars: HashMap<(u32, VarName), VarInfo>, // key is (scope_id, var_name)
+    scope_tree: HashMap<u32, u32>,          // maps scope id to parent scope id
 }
 
 impl SymbolTable {
