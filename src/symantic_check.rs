@@ -51,7 +51,7 @@ fn check_scope(scope: &Scope, symbol_table: &SymbolTable) -> Result<(), String> 
 
 fn check_types() {}
 
-fn check_syntax(declarations: &Vec<Declaration>) -> Result<SymbolTable, String> {
+pub fn check_syntax(declarations: &Vec<Declaration>) -> Result<SymbolTable, String> {
     // For now, we're only considering programs with a single declaration: a main function
     assert_eq!(declarations.len(), 1);
 
