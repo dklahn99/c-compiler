@@ -87,6 +87,7 @@ impl CFGBuildContext {
 type ControlBlock = Vec<Statement>;
 
 #[allow(dead_code)]
+#[derive(Debug, PartialEq)]
 struct ControlFlowGraph(HashMap<ControlBlockId, ControlBlock>);
 
 #[allow(dead_code)]
@@ -189,10 +190,10 @@ impl ControlFlowGraph {
 
 mod tests {
     use super::*;
-    // use crate::parser::parse;
-    // use crate::symantic_check::check_syntax;
-    // use crate::tokenizer::tokenize;
-    // use std::fs::read_to_string;
+    use crate::parser::parse;
+    use crate::symantic_check::check_syntax;
+    use crate::tokenizer::tokenize;
+    use std::fs::read_to_string;
 
     #[test]
     fn test_cfg_var_declare() -> Result<(), String> {
@@ -254,32 +255,27 @@ mod tests {
         Ok(())
     }
 
-    // #[test]
-    // fn my_test() -> Result<(), String> {
-    //     let s = read_to_string("test/main.c").unwrap();
-    //     let tokens = tokenize(&s)?;
-    //     let ast = parse(&tokens)?;
-    //     let symbol_table = check_syntax(&ast)?;
-    //     let cfg = ControlFlowGraph::from(&ast, &symbol_table);
+    #[test]
+    fn test_cfg_integration() -> Result<(), String> {
+        let s = read_to_string("test/return.c").unwrap();
+        let tokens = tokenize(&s)?;
+        let ast = parse(&tokens)?;
+        check_syntax(&ast)?;
+        let cfg = ControlFlowGraph::from(&ast);
 
-    //     let control_block = vec![
-    //         Statement::Assign {
-    //             var: "v1".to_owned(),
-    //             value: 278,
-    //         },
-    //         Statement::Assign {
-    //             var: "v2".to_owned(),
-    //             value: 34,
-    //         },
-    //         Statement::Operation {
-    //             dest: "v3".to_owned(),
-    //             op: BinOp::Add,
-    //             lhs: "v1".to_owned(),
-    //             rhs: "v2".to_owned(),
-    //         },
-    //     ];
-    //     let expected = ControlFlowGraph(HashMap::from([(0, control_block)]));
+        println!("CFG: {:?}", cfg);
 
-    //     Ok(())
-    // }
+        let control_block = vec![
+            Statement::Assign {
+                var: "v1".to_owned(),
+                value: 123,
+            },
+            Statement::Return("v1".to_owned()),
+        ];
+        let expected = ControlFlowGraph(HashMap::from([(0, control_block)]));
+
+        assert_eq!(cfg, expected);
+
+        Ok(())
+    }
 }
