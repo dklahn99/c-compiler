@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::symbol_table::VarName;
 use std::collections::HashMap;
+use std::ops::Deref;
 
 // Defines the Control Flow GRaph types
 /*
@@ -17,8 +18,8 @@ use std::collections::HashMap;
     - binary operations
     - return var
 */
-type CfgVarName = String;
-type ControlBlockId = u64;
+pub type CfgVarName = String;
+pub type ControlBlockId = u64;
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
@@ -62,6 +63,9 @@ struct CFGBuildContext {
 
 #[allow(dead_code)]
 impl CFGBuildContext {
+    // TODO: for now, only support storing variables in a few registers
+    const MAX_VAR_COUNT: usize = 11;
+
     fn new() -> Self {
         CFGBuildContext {
             var_counter: 0,
@@ -70,6 +74,7 @@ impl CFGBuildContext {
     }
 
     fn inc(&mut self) -> CfgVarName {
+        assert!(self.var_counter < CFGBuildContext::MAX_VAR_COUNT as u64);
         self.var_counter += 1;
         format!("v{:}", self.var_counter)
     }
@@ -84,11 +89,19 @@ impl CFGBuildContext {
     }
 }
 
-type ControlBlock = Vec<Statement>;
+pub type ControlBlock = Vec<Statement>;
 
 #[allow(dead_code)]
 #[derive(Debug, PartialEq)]
-struct ControlFlowGraph(HashMap<ControlBlockId, ControlBlock>);
+pub struct ControlFlowGraph(HashMap<ControlBlockId, ControlBlock>);
+
+impl Deref for ControlFlowGraph {
+    type Target = HashMap<ControlBlockId, ControlBlock>;
+
+    fn deref(&self) -> &HashMap<ControlBlockId, ControlBlock> {
+        &self.0
+    }
+}
 
 #[allow(dead_code)]
 impl ControlFlowGraph {
