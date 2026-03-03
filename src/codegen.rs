@@ -10,8 +10,8 @@ use std::fmt;
     v4-v11: r8-r15
 */
 
-// TODO: make this use _start instead. Also return with a syscall
 const ASM_HEADER: [&'static str; 2] = [".global _start", "_start:"];
+const SYSCALL_EXIT: u8 = 60;
 
 enum RegisterGP {
     RAX,
@@ -69,7 +69,7 @@ fn return_to_asm(var: &CfgVarName) -> Result<Vec<String>, String> {
         // Here we're ok with blowing away %rdi and %rax because we're returning from main anyway.
         // TODO: this will have to be smarter once we have more than one function
         format!("mov %{}, %rdi", var_to_reg(var)?),
-        "mov $60, %rax".to_owned(), // 60 is the syscall number for exiting
+        format!("mov ${}, %rax", SYSCALL_EXIT),
         "syscall".to_owned(),
     ])
 }
@@ -108,7 +108,14 @@ mod tests {
         let asm = cfg_to_asm(&cfg)?;
 
         println!("CFG: {:?}", cfg);
-        let expected = vec![".global main", "main:", "mov $123, %rbx", "mov %rbx, %rax"];
+        let expected = vec![
+            ".global _start",
+            "_start:",
+            "mov $123, %rax",
+            "mov %rax, %rdi",
+            "mov $60, %rax",
+            "syscall",
+        ];
         assert_eq!(asm, expected);
 
         Ok(())
