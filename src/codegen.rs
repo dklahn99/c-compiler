@@ -9,9 +9,12 @@ use std::fmt;
     v3: rdx
     v4-v11: r8-r15
 */
-const ASM_HEADER: [&'static str; 2] = [".global main", "main:"];
+
+// TODO: make this use _start instead. Also return with a syscall
+const ASM_HEADER: [&'static str; 2] = [".global _start", "_start:"];
 
 enum RegisterGP {
+    RAX,
     RBX,
     RCX,
     RDX,
@@ -28,6 +31,7 @@ enum RegisterGP {
 impl fmt::Display for RegisterGP {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let s = match self {
+            RegisterGP::RAX => "rax",
             RegisterGP::RBX => "rbx",
             RegisterGP::RCX => "rcx",
             RegisterGP::RDX => "rdx",
@@ -46,11 +50,12 @@ impl fmt::Display for RegisterGP {
 
 fn var_to_reg(var: &CfgVarName) -> Result<RegisterGP, String> {
     match var.as_str() {
-        "v1" => Ok(RegisterGP::RBX),
-        "v2" => Ok(RegisterGP::RCX),
-        "v3" => Ok(RegisterGP::RDX),
-        "v4" => Ok(RegisterGP::R8),
-        "v5" => Ok(RegisterGP::R9),
+        "v1" => Ok(RegisterGP::RAX),
+        "v2" => Ok(RegisterGP::RBX),
+        "v3" => Ok(RegisterGP::RCX),
+        "v4" => Ok(RegisterGP::RDX),
+        "v5" => Ok(RegisterGP::R8),
+        "v6" => Ok(RegisterGP::R9),
         _ => Err(format!("Could not map var {}", var)),
     }
 }
@@ -60,7 +65,13 @@ fn assign_to_asm(var: &CfgVarName, value: u64) -> Result<Vec<String>, String> {
 }
 
 fn return_to_asm(var: &CfgVarName) -> Result<Vec<String>, String> {
-    Ok(vec![format!("mov %{}, %rax", var_to_reg(var)?)])
+    Ok(vec![
+        // Here we're ok with blowing away %rdi and %rax because we're returning from main anyway.
+        // TODO: this will have to be smarter once we have more than one function
+        format!("mov %{}, %rdi", var_to_reg(var)?),
+        "mov $60, %rax".to_owned(), // 60 is the syscall number for exiting
+        "syscall".to_owned(),
+    ])
 }
 
 pub fn cfg_to_asm(cfg: &crate::cfg::ControlFlowGraph) -> Result<Vec<String>, String> {

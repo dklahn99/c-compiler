@@ -10,6 +10,7 @@ mod symbol_table;
 mod tokenizer;
 
 const FILE_ASM: &str = "out.s";
+const FILE_OBJ: &str = "out.o";
 const FILE_EXE: &str = "out";
 
 fn main() {
@@ -22,10 +23,13 @@ fn main() {
 
     write(FILE_ASM, asm).expect(format!("Failed to write {}", FILE_ASM).as_str());
 
-    let result = Command::new("gcc")
-        .args([FILE_ASM, "-o", FILE_EXE])
+    Command::new("as")
+        .args([FILE_ASM, "-o", FILE_OBJ])
         .output()
         .expect("Failed to execute `as`");
 
-    println!("result: {:?}", result.status)
+    Command::new("ld")
+        .args([FILE_OBJ, "-o", FILE_EXE])
+        .output()
+        .expect("Failed to execute `ld`");
 }
